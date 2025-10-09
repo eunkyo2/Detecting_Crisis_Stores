@@ -1,140 +1,132 @@
-# plot_stage_scatter.py
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import platform
-import pandas as pd
-from preprocessing_growth_level import df2  # df2가 이미 만들어진다고 가정
 
-# =========================
-# 💡 한글 폰트 깨짐 방지 (시작 부분에 배치)
-# =========================
+# 1. CSV 로드 (성장단계 포함된 파일 사용)
+df = pd.read_csv("big_data_set2_f_stage.csv", encoding="cp949")
+
+# 2. 폰트 설정 (한글 깨짐 방지)
 if platform.system() == 'Windows':
-    plt.rc('font', family='Malgun Gothic')  # Windows: 맑은 고딕
+    plt.rc('font', family='Malgun Gothic')
 elif platform.system() == 'Darwin':
-    plt.rc('font', family='AppleGothic')    # macOS
+    plt.rc('font', family='AppleGothic')
 else:
-    plt.rc('font', family='NanumGothic')    # Linux/Colab 등
-plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
+    plt.rc('font', family='NanumGothic')
+plt.rcParams['axes.unicode_minus'] = False
 
-# =========================
-# --- 컬럼 설정 ---
-# =========================
-COL_OPE   = 'MCT_OPE_MS_CN_clean'   # x축
-COL_SALES = 'RC_M1_SAA_clean'       # y축
-STAGE_CANDIDATES = ['growth_level', '성장단계']
+# 3. 주요 컬럼 지정
+X_COL = 'MCT_OPE_MS_CN_rank_mean'  # 운영개월 평균
+Y_COL = 'RC_M1_SAA_rank_mean'      # 매출금액 평균
+STAGE_COL = '성장단계'              # 성장단계
 
-# 성장단계 컬럼 존재 확인
-stage_cols = [c for c in STAGE_CANDIDATES if c in df2.columns]
-if not stage_cols:
-    raise KeyError(f"성장단계 컬럼이 없음. 후보 중 하나를 df2에 만들어줘: {STAGE_CANDIDATES}")
-COL_STAGE = stage_cols[0]
+# 4. 데이터 정리
+df = df.dropna(subset=[X_COL, Y_COL])
+df[X_COL] = pd.to_numeric(df[X_COL], errors='coerce')
+df[Y_COL] = pd.to_numeric(df[Y_COL], errors='coerce')
 
-# =========================
-# --- 구간 순서 지정 ---
-# =========================
-ope_order   = ['10%이하', '10~25%', '25~50%', '50~75%', '75~90%', '90%초과']
-sales_order = ['10%이하', '10~25%', '25~50%', '50~75%', '75~90%', '90%초과']
-
-# =========================
-# --- 구간 정규화 함수 ---
-# =========================
-def normalize_key(x):
-    if pd.isna(x):
-        return x
-    s = str(x).replace(' ', '').replace('-', '~')
-    if '(' in s:
-        s = s.split('(')[0]
-    if s.startswith('90%초과'):
-        return '90%초과'
-    if s in ['10~25', '25~50', '50~75', '75~90']:
-        s += '%'
-    return s
-
-for c in [COL_OPE, COL_SALES]:
-    if c not in df2.columns:
-        raise KeyError(f"컬럼 없음: {c}  (preprocessing2.py에서 생성됐는지 확인)")
-
-df2[COL_OPE]   = df2[COL_OPE].apply(normalize_key)
-df2[COL_SALES] = df2[COL_SALES].apply(normalize_key)
-
-# 유효 구간만 필터링
-df2 = df2[df2[COL_OPE].isin(ope_order) & df2[COL_SALES].isin(sales_order)].copy()
-
-# 좌표 매핑
-x_map = {v: i for i, v in enumerate(ope_order)}
-y_map = {v: i for i, v in enumerate(sales_order)}
-df2['x'] = df2[COL_OPE].map(x_map)
-df2['y'] = df2[COL_SALES].map(y_map)
-
-# =========================
-# --- 성장단계 라벨 통합 ---
-# =========================
-danger_alias = {
-    '잠재형': '잠재형', 'Latent_type': '잠재형', 'latent_type': '잠재형', 'latent': '잠재형',
-    '침체전조': '침체전조', 'recession': '침체전조', 'warning': '침체전조',
-    '쇠퇴형': '쇠퇴형', 'decline': '쇠퇴형'
-}
-safe_set = set(['안정형','성장형','우량형','성숙안정형','성장안정형',
-                'stable','growth','mature','premium','balanced','growth_stable','mature_stable'])
-
-def stage_unify(v):
-    if pd.isna(v):
-        return '기타'
-    s = str(v).strip()
-    if s in danger_alias:
-        return danger_alias[s]
-    if s in safe_set:
-        return '안전군'
-    if s in ['잠재형','침체전조','쇠퇴형','안정형','성장형','우량형','성숙안정형','성장안정형']:
-        return s
-    return '기타'
-
-df2['stage_unified'] = df2[COL_STAGE].apply(stage_unify)
-
-# =========================
-# --- 색상 맵 정의 ---
-# =========================
-color_map = {
-    '잠재형':  '#FFD700',  # 노랑
-    '침체전조':'#FFA500',  # 주황
-    '쇠퇴형':  '#FF0000',  # 빨강
-    '안전군':  '#1E90FF',  # 파랑
-    '기타':    '#A9A9A9'   # 회색
-}
-
-# jitter (점 겹침 방지)
+# jitter 추가 (점 겹침 방지)
 rng = np.random.default_rng(42)
-df2['xj'] = df2['x'] + rng.uniform(-0.15, 0.15, len(df2))
-df2['yj'] = df2['y'] + rng.uniform(-0.15, 0.15, len(df2))
+df['xj'] = df[X_COL] + rng.uniform(-0.05, 0.05, len(df))
+df['yj'] = df[Y_COL] + rng.uniform(-0.05, 0.05, len(df))
 
-# =========================
-# --- 시각화 ---
-# =========================
-plt.figure(figsize=(9, 8))
-for xi in range(len(ope_order)+1):
-    plt.axvline(x=xi-0.5, color='lightgray', linewidth=0.8)
-for yi in range(len(sales_order)+1):
-    plt.axhline(y=yi-0.5, color='lightgray', linewidth=0.8)
+# 5. 색상 구분
+def get_color(stage):
+    if stage == '쇠퇴형':
+        return '#FF0000'  # 빨강
+    elif stage in ['침체전조', '침제전조']:
+        return '#FFA500'  # 주황
+    else:
+        return '#1E90FF'  # 파랑
 
-# 순서: 안전군 먼저, 위험군 나중
-draw_order = ['안전군', '잠재형', '침체전조', '쇠퇴형', '기타']
-for lab in draw_order:
-    sub = df2[df2['stage_unified'] == lab]
-    if len(sub) == 0:
-        continue
-    plt.scatter(
-        sub['xj'], sub['yj'], s=18,
-        c=color_map[lab], alpha=0.8 if lab != '안전군' else 0.5,
-        edgecolors='none', label=lab
-    )
+df['color'] = df[STAGE_COL].apply(get_color)
 
-plt.xticks(range(len(ope_order)), ope_order, fontsize=11)
-plt.yticks(range(len(sales_order)), sales_order, fontsize=11)
-plt.gca().invert_yaxis()
+# 6. 산점도 시각화
+plt.figure(figsize=(8, 6))
+plt.scatter(df['xj'], df['yj'], s=20, alpha=0.7, c=df['color'], edgecolors='none')
 
-plt.xlabel('운영개월수 구간', fontsize=13)
-plt.ylabel('매출금액 구간', fontsize=13)
-plt.title('가맹점 성장단계 분포 (위험군 vs 안전군)', fontsize=14)
-plt.legend(title='성장단계', loc='upper right')
+plt.xlabel('운영개월 평균 등급 (MCT_OPE_MS_CN_rank_mean)', fontsize=12)
+plt.ylabel('매출금액 평균 등급 (RC_M1_SAA_rank_mean)', fontsize=12)
+plt.title('가맹점 운영개월 vs 매출 등급 평균 분포 (쇠퇴·침체전조 구분)', fontsize=14)
+
+plt.xticks(range(1, 7))
+plt.yticks(range(1, 7))
+plt.grid(alpha=0.3)
+
+# 범례 수동 추가
+from matplotlib.lines import Line2D
+legend_elements = [
+    Line2D([0], [0], marker='o', color='w', label='쇠퇴형', markerfacecolor='#FF0000', markersize=6),
+    Line2D([0], [0], marker='o', color='w', label='침체전조', markerfacecolor='#FFA500', markersize=6),
+    Line2D([0], [0], marker='o', color='w', label='기타', markerfacecolor='#1E90FF', markersize=6)
+]
+plt.legend(handles=legend_elements, title='성장단계', loc='upper right')
+
+plt.tight_layout()
+plt.show()
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import platform
+
+# 1. CSV 로드 (성장단계 포함된 파일 사용)
+df = pd.read_csv("big_data_set2_f_stage.csv", encoding="cp949")
+
+# 2. 폰트 설정 (한글 깨짐 방지)
+if platform.system() == 'Windows':
+    plt.rc('font', family='Malgun Gothic')
+elif platform.system() == 'Darwin':
+    plt.rc('font', family='AppleGothic')
+else:
+    plt.rc('font', family='NanumGothic')
+plt.rcParams['axes.unicode_minus'] = False
+
+# 3. 주요 컬럼 지정
+X_COL = 'MCT_OPE_MS_CN_rank_mean'  # 운영개월 평균
+Y_COL = 'RC_M1_SAA_rank_mean'      # 매출금액 평균
+STAGE_COL = '성장단계'              # 성장단계
+
+# 4. 데이터 정리
+df = df.dropna(subset=[X_COL, Y_COL])
+df[X_COL] = pd.to_numeric(df[X_COL], errors='coerce')
+df[Y_COL] = pd.to_numeric(df[Y_COL], errors='coerce')
+
+# jitter 추가 (점 겹침 방지)
+rng = np.random.default_rng(42)
+df['xj'] = df[X_COL] + rng.uniform(-0.05, 0.05, len(df))
+df['yj'] = df[Y_COL] + rng.uniform(-0.05, 0.05, len(df))
+
+# 5. 색상 구분
+def get_color(stage):
+    if stage == '쇠퇴형':
+        return '#FF0000'  # 빨강
+    elif stage in ['침체전조', '침체전조']:
+        return '#FFA500'  # 주황
+    else:
+        return '#1E90FF'  # 파랑
+
+df['color'] = df[STAGE_COL].apply(get_color)
+
+# 6. 산점도 시각화
+plt.figure(figsize=(8, 6))
+plt.scatter(df['xj'], df['yj'], s=20, alpha=0.7, c=df['color'], edgecolors='none')
+
+plt.xlabel('운영개월 평균 등급 (MCT_OPE_MS_CN_rank_mean)', fontsize=12)
+plt.ylabel('매출금액 평균 등급 (RC_M1_SAA_rank_mean)', fontsize=12)
+plt.title('가맹점 운영개월 vs 매출 등급 평균 분포 (쇠퇴·침체전조 구분)', fontsize=14)
+
+plt.xticks(range(1, 7))
+plt.yticks(range(1, 7))
+plt.grid(alpha=0.3)
+
+# 범례 수동 추가
+from matplotlib.lines import Line2D
+legend_elements = [
+    Line2D([0], [0], marker='o', color='w', label='쇠퇴형', markerfacecolor='#FF0000', markersize=6),
+    Line2D([0], [0], marker='o', color='w', label='침체전조', markerfacecolor='#FFA500', markersize=6),
+    Line2D([0], [0], marker='o', color='w', label='기타', markerfacecolor='#1E90FF', markersize=6)
+]
+plt.legend(handles=legend_elements, title='성장단계', loc='upper right')
+
 plt.tight_layout()
 plt.show()

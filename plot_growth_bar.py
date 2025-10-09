@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from preprocessing_growth_level import df2
+from processing_growth_level import df2
 import platform
 
 # 한글 폰트 깨짐 방지
@@ -26,7 +26,7 @@ stage_counts = df2[COL_STAGE].value_counts().reindex(stage_order, fill_value=0)
 # 2. 색상 매핑
 color_map = {
     '성장형': '#5DADE2',      # 파랑톤 (성장)
-    '잠재형': '#FFD700',      # 노랑 (리스크 전조)
+    '잠재형': '#85C1E9',      # 옅은 파랑
     '초기안정형': '#85C1E9',  # 옅은 파랑
     '성장안정형': '#3498DB',  # 진한 파랑
     '안정형': '#1E90FF',      # 표준 블루
